@@ -11,6 +11,3 @@ WHERE
         DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'),
         INTERVAL 1 MONTH
     );
-
-SELECT *
-FROM orders_paid_on_current_month;

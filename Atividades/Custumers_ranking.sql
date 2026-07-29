@@ -15,6 +15,3 @@ GROUP BY
 ORDER BY
     total DESC,
     c.name ASC;
-
-SELECT *
-FROM customers_ranking_30d;

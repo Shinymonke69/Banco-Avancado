@@ -17,6 +17,3 @@ GROUP BY
 ORDER BY
     quantity DESC,
     p.name ASC;
-
-SELECT *
-FROM products_best_sellers_24h;
