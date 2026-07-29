@@ -1,0 +1,67 @@
+name: bd-avancado
+
+services:
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: advanced_bd_php
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./api:/var/www
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    depends_on:
+      - mysql
+    networks:
+      - advanced_bd
+
+  nginx:
+    image: nginx:alpine
+    container_name: advanced_bd_nginx
+    restart: unless-stopped
+    ports:
+      - "8582:80"
+    volumes:
+      - ./api:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    networks:
+      - advanced_bd
+
+  mysql:
+    image: mysql:9
+    container_name: advanced_bd_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ecommerce
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: ecommerce_usr
+      MYSQL_PASSWORD: ecommercepwd
+    ports:
+      - "33206:3306"
+    volumes:
+      - advanced_bd_data:/var/lib/mysql
+    networks:
+      - advanced_bd
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: advanced_bd_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8584:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    depends_on:
+      - mysql
+    networks:
+      - advanced_bd
+
+volumes:
+  advanced_bd_data:
+
+networks:
+  advanced_bd:
