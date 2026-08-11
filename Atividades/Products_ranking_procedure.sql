@@ -6,7 +6,7 @@ CREATE PROCEDURE generate_products_ranking(
     IN p_start_date DATE,
     IN p_end_date DATE,
     IN p_limit INT,
-    IN p_category_id BIGINT UNSIGNED -- Desafio: Filtro opcional por categoria (NULL para buscar em todas as categorias)
+    IN p_category_id BIGINT UNSIGNED 
 )
 BEGIN
     SELECT 
@@ -19,7 +19,7 @@ BEGIN
     WHERE 
         DATE(o.paid_at) BETWEEN p_start_date AND p_end_date
         AND o.status = 'paid'
-        -- Filtro opcional: Se p_category_id for nulo, ignora o filtro. Se tiver valor, busca somente daquela categoria
+        
         AND (p_category_id IS NULL OR p.category_id = p_category_id)
     GROUP BY 
         p.id, 

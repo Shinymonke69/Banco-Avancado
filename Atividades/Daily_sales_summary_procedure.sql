@@ -23,7 +23,7 @@ BEGIN
     DECLARE v_top_customer VARCHAR(255) DEFAULT NULL;
     DECLARE v_new_customers_count INT DEFAULT 0;
 
-    -- Calculando Quantidade de pedidos, Total vendido e Ticket medio
+    
     SELECT 
         COUNT(id), 
         COALESCE(SUM(total), 0), 
@@ -35,7 +35,7 @@ BEGIN
     FROM orders
     WHERE DATE(paid_at) = p_date AND status = 'paid';
 
-    -- Produto mais vendido
+   
     SELECT p.name 
     INTO v_best_selling_product
     FROM order_items oi
@@ -46,7 +46,7 @@ BEGIN
     ORDER BY SUM(oi.quantity) DESC
     LIMIT 1;
 
-    -- Cliente que mais comprou (por total gasto)
+    
     SELECT c.name 
     INTO v_top_customer
     FROM orders o
@@ -56,13 +56,13 @@ BEGIN
     ORDER BY SUM(o.total) DESC
     LIMIT 1;
 
-    -- Numero de novos clientes
+    
     SELECT COUNT(id)
     INTO v_new_customers_count
     FROM customers
     WHERE DATE(created_at) = p_date;
 
-    -- Inserindo ou atualizando os dados (Desafio)
+    
     INSERT INTO daily_sales_summary (
         summary_date, 
         total_orders, 
