@@ -1,0 +1,252 @@
+CREATE TABLE IF NOT EXISTS stock_movements (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT UNSIGNED NOT NULL,
+    type VARCHAR(20) NOT NULL,
+    quantity BIGINT NOT NULL,
+    stock_before BIGINT NOT NULL,
+    stock_after BIGINT NOT NULL,
+    reference_type VARCHAR(50),
+    reference_id BIGINT UNSIGNED,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE TABLE IF NOT EXISTS order_status_history (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT UNSIGNED NOT NULL,
+    old_status VARCHAR(50),
+    new_status VARCHAR(50),
+    changet_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+-- ==========================================
+-- 2. FUNCTIONS
+-- ==========================================
+DELIMITER $$
+
+CREATE FUNCTION fn_order_total (
+    p_order_id BIGINT UNSIGNED
+)
+RETURNS DECIMAL(10,2)
+READS SQL DATA
+BEGIN
+    DECLARE v_total DECIMAL(10,2) DEFAULT 0.00;
+    
+    SELECT COALESCE(SUM(product_price * quantity), 0)
+      INTO v_total
+      FROM order_items
+     WHERE order_id = p_order_id;
+     
+    RETURN v_total;
+END $$
+
+CREATE FUNCTION fn_customer_lifetime_value(
+    p_customer_id BIGINT UNSIGNED
+)
+RETURNS DECIMAL(10,2)
+READS SQL DATA
+BEGIN
+    DECLARE v_total DECIMAL(10,2) DEFAULT 0.00;
+
+    SELECT COALESCE(SUM(total), 0)
+      INTO v_total
+      FROM orders
+     WHERE customer_id = p_customer_id
+       AND status = 'paid';
+       
+    RETURN v_total;
+END $$
+DELIMITER ;
+
+-- ==========================================
+-- 3. VIEWS
+-- ==========================================
+
+-- View 1: vw_product_sales
+CREATE OR REPLACE VIEW vw_product_sales AS
+SELECT 
+    p.id AS product_id,
+    p.name AS product_name,
+    SUM(oi.quantity) AS quantity_sold,
+    SUM(oi.product_price * oi.quantity) AS revenue,
+    AVG(oi.product_price) AS average_price
+FROM products p
+JOIN order_items oi ON p.id = oi.product_id
+JOIN orders o ON oi.order_id = o.id
+WHERE o.status = 'paid'
+GROUP BY p.id, p.name;
+
+-- View 2: vw_customer_ranking
+CREATE OR REPLACE VIEW vw_customer_ranking AS
+SELECT 
+    c.id AS customer_id,
+    c.name AS customer_name,
+    COUNT(o.id) AS orders_count,
+    SUM(o.total) AS total_spent,
+    AVG(o.total) AS average_order_value,
+    MAX(o.created_at) AS last_order_at
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.status = 'paid'
+GROUP BY c.id, c.name
+ORDER BY total_spent DESC;
+
+-- ==========================================
+-- 4. PROCEDURES
+-- ==========================================
+
+DELIMITER $$
+
+-- Procedure 1: sp_recalculate_order
+CREATE PROCEDURE sp_recalculate_order(IN p_order_id BIGINT UNSIGNED)
+BEGIN
+    DECLARE v_exists INT;
+    DECLARE v_new_total DECIMAL(10,2);
+    
+    -- Verifica se o pedido existe
+    SELECT COUNT(*) INTO v_exists FROM orders WHERE id = p_order_id;
+    
+    IF v_exists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pedido nao encontrado';
+    END IF;
+    
+    -- Recalcula usando a function
+    SET v_new_total = fn_order_total(p_order_id);
+    
+    -- Atualiza
+    UPDATE orders SET total = v_new_total WHERE id = p_order_id;
+    
+    -- Retorna as info
+    SELECT id, customer_id, status, total, updated_at 
+    FROM orders 
+    WHERE id = p_order_id;
+END $$
+
+-- Procedure 2: sp_finalize_order
+CREATE PROCEDURE sp_finalize_order(IN p_order_id BIGINT UNSIGNED)
+BEGIN
+    DECLARE v_exists INT;
+    DECLARE v_status VARCHAR(50);
+    DECLARE v_new_total DECIMAL(10,2);
+    
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    START TRANSACTION;
+    
+    -- Verifica se o pedido existe
+    SELECT COUNT(*) INTO v_exists FROM orders WHERE id = p_order_id;
+    
+    IF v_exists = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pedido nao encontrado';
+    END IF;
+    
+    -- Bloqueia a linha e pega o status atual
+    SELECT status INTO v_status FROM orders WHERE id = p_order_id FOR UPDATE;
+    
+    IF v_status = 'paid' OR v_status = 'closed' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pedido ja foi pago ou fechado';
+    END IF;
+    
+    -- Recalcula usando a function
+    SET v_new_total = fn_order_total(p_order_id);
+    
+    -- Atualiza e fecha o pedido
+    UPDATE orders 
+    SET status = 'paid', total = v_new_total, paid_at = NOW() 
+    WHERE id = p_order_id;
+    
+    COMMIT;
+    
+    SELECT id, status, total, paid_at FROM orders WHERE id = p_order_id;
+END $$
+DELIMITER ;
+
+-- ==========================================
+-- 5. TRIGGERS
+-- ==========================================
+
+DELIMITER $$
+
+-- Trigger 1: Controle Automatico de Estoque
+CREATE TRIGGER tr_order_items_before_insert
+BEFORE INSERT ON order_items
+FOR EACH ROW
+BEGIN
+    DECLARE v_stock BIGINT;
+    
+    -- Busca estoque atual
+    SELECT stock INTO v_stock FROM products WHERE id = NEW.product_id;
+    
+    -- Valida estoque
+    IF v_stock < NEW.quantity THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Estoque insuficiente para o produto';
+    END IF;
+    
+    -- Atualiza estoque e movimenta
+    UPDATE products SET stock = stock - NEW.quantity WHERE id = NEW.product_id;
+    
+    INSERT INTO stock_movements (product_id, type, quantity, stock_before, stock_after, reference_type, reference_id)
+    VALUES (NEW.product_id, 'OUT', NEW.quantity, v_stock, v_stock - NEW.quantity, 'ORDER', NEW.order_id);
+END $$
+
+-- Trigger 2: Historico de alteracao de status
+CREATE TRIGGER tr_orders_after_update
+AFTER UPDATE ON orders
+FOR EACH ROW
+BEGIN
+    IF OLD.status <> NEW.status THEN
+        INSERT INTO order_status_history (order_id, old_status, new_status, changet_at)
+        VALUES (NEW.id, OLD.status, NEW.status, NOW());
+    END IF;
+END $$
+
+DELIMITER ;
+
+
+-- ==========================================
+-- 6. TESTES
+-- ==========================================
+
+-- Teste 1: Function de Pedido
+SELECT fn_order_total(1) AS Total_Pedido_1;
+
+-- Teste 2: Function de Cliente
+SELECT fn_customer_lifetime_value(1) AS Lifetime_Value_Cliente_1;
+
+-- Teste 3: View de Produtos
+SELECT * FROM vw_product_sales ORDER BY quantity_sold DESC LIMIT 5;
+
+-- Teste 4: View de Clientes
+SELECT * FROM vw_customer_ranking LIMIT 5;
+
+-- Teste 5: Procedure de recálculo
+CALL sp_recalculate_order(10);
+
+-- Teste 6: Procedure de finalização
+CALL sp_finalize_order(10);
+
+-- Teste 7: Trigger de estoque
+SELECT id, name, stock FROM products WHERE id = 1;
+
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity) 
+
+VALUES (1, 1, 'Produto Teste', 50.00, 2);
+
+SELECT id, name, stock FROM products WHERE id = 1;
+
+SELECT * FROM stock_movements ORDER BY id DESC LIMIT 1;
+
+-- Teste 8: Erro de estoque
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity) 
+VALUES (1, 1, 'Produto Teste', 50.00, 9999);
+
+-- Teste 9: Trigger de alteração de status
+SELECT id, status FROM orders WHERE id = 1;
+
+UPDATE orders SET status = 'shipped' WHERE id = 1;
+
+SELECT * FROM order_status_history ORDER BY id DESC LIMIT 1;

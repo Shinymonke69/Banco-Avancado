@@ -1,0 +1,89 @@
+Relatório - Banco de Dados Avançado (E-commerce)
+
+Este relatório descreve as Functions, Views, Procedures e Triggers implementadas no arquivo ecommerce_avancado.sql.
+
+--------------------------------------------------
+
+14.1. Functions
+
+fn_order_total
+Objetivo: Calcular o valor total de um pedido específico.
+Parâmetros: p_order_id (BIGINT UNSIGNED) - ID do pedido.
+Retorno: DECIMAL(10,2) - Valor total calculado do pedido.
+Regra implementada: Realiza a soma do valor total dos itens (product_price * quantity) na tabela order_items para o order_id informado. Retorna 0 caso não haja itens.
+Exemplo de utilização: SELECT fn_order_total(1) AS Total_Pedido_1;
+
+
+fn_customer_lifetime_value
+Objetivo: Calcular o Lifetime Value (LTV) de um cliente, ou seja, o total já gasto por ele na loja.
+Parâmetros: p_customer_id (BIGINT UNSIGNED) - ID do cliente.
+Retorno: DECIMAL(10,2) - Valor total gasto pelo cliente.
+Regra implementada: Soma a coluna total da tabela orders vinculada ao cliente, considerando apenas os pedidos com status 'paid' (pago). Retorna 0 se não houver pedidos pagos.
+Exemplo de utilização: SELECT fn_customer_lifetime_value(1) AS Lifetime_Value_Cliente_1;
+
+--------------------------------------------------
+
+14.2. Views
+
+vw_product_sales
+Objetivo: Disponibilizar métricas consolidadas de vendas por produto.
+Tabelas utilizadas: products (p), order_items (oi), orders (o).
+Informações disponibilizadas: ID do produto, nome do produto, quantidade total vendida, receita total gerada e preço médio de venda (apenas de pedidos com status 'paid').
+Exemplo de consulta: SELECT * FROM vw_product_sales ORDER BY quantity_sold DESC LIMIT 5;
+
+
+vw_customer_ranking
+Objetivo: Visualizar o ranking e o perfil de compras consolidado dos clientes.
+Tabelas utilizadas: customers (c), orders (o).
+Informações disponibilizadas: ID do cliente, nome do cliente, contagem de pedidos, total gasto, valor médio dos pedidos (ticket médio) e data/hora do último pedido (apenas pedidos 'paid'). É ordenada do maior para o menor total gasto.
+Exemplo de consulta: SELECT * FROM vw_customer_ranking LIMIT 5;
+
+--------------------------------------------------
+
+14.3. Procedures
+
+sp_recalculate_order
+Objetivo: Recalcular e atualizar o valor total de um pedido na tabela de pedidos.
+Parâmetros: p_order_id (BIGINT UNSIGNED) - ID do pedido (IN).
+Etapas executadas:
+  1. Verifica se o pedido existe.
+  2. Chama a função fn_order_total para obter o novo valor.
+  3. Atualiza a tabela orders com o novo total.
+  4. Retorna os dados atualizados do pedido.
+Tratamento de erros: Se o pedido não for encontrado na etapa 1, lança uma exceção com SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pedido nao encontrado'.
+
+
+sp_finalize_order
+Objetivo: Finalizar um pedido de forma segura e transacional, marcando-o como pago.
+Parâmetros: p_order_id (BIGINT UNSIGNED) - ID do pedido (IN).
+Etapas executadas:
+  1. Inicia uma transação (START TRANSACTION).
+  2. Verifica a existência do pedido.
+  3. Bloqueia a linha correspondente para atualização (SELECT ... FOR UPDATE).
+  4. Verifica se o status já é 'paid' ou 'closed'.
+  5. Recalcula o total usando fn_order_total.
+  6. Atualiza o status do pedido para 'paid', define o total e a data de pagamento (paid_at = NOW()).
+  7. Efetua o commit.
+  8. Retorna os dados atualizados.
+Tratamento de erros: 
+  - Possui um EXIT HANDLER FOR SQLEXCEPTION que executa ROLLBACK em caso de qualquer falha não tratada no MySQL.
+  - Lança erros personalizados (SIGNAL SQLSTATE '45000') caso o pedido não exista ou já esteja pago/fechado, impedindo cobrança duplicada.
+
+--------------------------------------------------
+
+14.4. Triggers
+
+tr_order_items_before_insert
+Tabela associada: order_items
+Evento: INSERT
+Momento de execução: BEFORE
+Regra implementada: Antes de um item ser inserido em um pedido, verifica a quantidade em estoque na tabela products. Se o estoque for insuficiente, bloqueia o insert. Se houver estoque, realiza o desconto (stock = stock - NEW.quantity) e insere um registro de saída na tabela stock_movements.
+Impacto sobre os dados: Garante que o sistema nunca venda produtos sem estoque físico (integridade referencial de negócio). Mantém também o histórico de movimentação sempre sincronizado com as vendas.
+
+
+tr_orders_after_update
+Tabela associada: orders
+Evento: UPDATE
+Momento de execução: AFTER
+Regra implementada: Após a atualização de um pedido, verifica se o campo status foi alterado (OLD.status <> NEW.status). Se sim, insere um registro automático na tabela order_status_history contendo o status antigo, o novo status e a data da alteração.
+Impacto sobre os dados: Cria uma trilha de auditoria e rastreabilidade automatizada para as mudanças de estado dos pedidos, sem necessitar que a aplicação (ou a procedure) gerencie essas inserções manualmente no histórico.
