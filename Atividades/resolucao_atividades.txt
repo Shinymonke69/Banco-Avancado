@@ -1,0 +1,167 @@
+Performance e Otimização de Consultas no MySQL
+
+---Atividade 1: Índice Simples (Pedidos por Status)---
+
+Passo 1: Executar EXPLAIN e EXPLAIN ANALYZE
+
+Comando:
+EXPLAIN SELECT * FROM orders WHERE status = 'paid';
+
+Saída:
+
+| -> Filter: (orders.`status` = 'paid')  (cost=103771 rows=102930)
+|    -> Table scan on orders  (cost=103771 rows=1.03e+6)
+
+Comando:
+EXPLAIN ANALYZE SELECT * FROM orders WHERE status = 'paid';
+
+Saída:
+
+| -> Filter: (orders.`status` = 'paid')  (cost=103771 rows=102930) (actual time=0.175..273 rows=515161 loops=1)
+|    -> Table scan on orders  (cost=103771 rows=1.03e+6) (actual time=0.171..204 rows=1.03e+6 loops=1)
+
+
+Passo 2: Criar índice
+
+Comando:
+CREATE INDEX idx_orders_status ON orders(status);
+
+Saída:
+Query OK, 0 rows affected. Records: 0  Duplicates: 0  Warnings: 0
+
+Passo 3: Re-executar análises e responder
+
+Comando:
+EXPLAIN SELECT * FROM orders WHERE status = 'paid';
+
+Saída:
+
+| -> Index lookup on orders using idx_orders_status (status = 'paid')  (cost=54012 rows=514648)  |
+
+
+Comando:
+EXPLAIN ANALYZE SELECT * FROM orders WHERE status = 'paid';
+
+Saída:
+
+| -> Index lookup on orders using idx_orders_status (status = 'paid')  (cost=54012 rows=514648) (actual time=1.42..568 rows=515161 loops=1)  |
+
+
+Respostas:
+- Qual era o type e key? Antes do índice o acesso era por Table Scan. Após criar o índice, passou a ser 'Index lookup' (o MySQL utilizou a key: idx_orders_status).
+- Quantas linhas estimadas? Antes, estimava-se ler as 1.03 milhões de linhas da tabela inteira. Após o índice, caiu para 514648 (cerca de metade).
+- O tempo mudou? Sim, embora de forma contra intuitiva. Como o índice 'status' tem baixa seletividade (metade da tabela), o Table Scan (varredura sequencial, ~273ms) pode ser mais rápido do que buscar 500 mil registros no índice (leituras aleatórias em disco, ~568ms). O otimizador escolheu o índice com base em custos estimados, mas na prática foi um pouco pior.
+- A melhoria justifica manter o índice? Neste cenário (com baixa seletividade, retornando metade da tabela), **NÃO**. É um ótimo exemplo de que índices em colunas como "status" podem não valer a pena se o banco precisar retornar muitos dados.
+
+---Atividade 2: Índice Composto (Cliente + Status)---
+
+Consulta Base:
+SELECT * FROM orders WHERE customer_id = 50 AND status = 'paid';
+
+Passo 1: Analisar performance com índice único (customer_id existente padrão)
+
+Comando:
+EXPLAIN ANALYZE SELECT * FROM orders WHERE customer_id = 50 AND status = 'paid';
+
+Saída:
+
+| -> Filter: (orders.customer_id = 50)  (cost=2526 rows=15.7) (actual time=19.4..463 rows=5003 loops=1)
+|    -> Index lookup on orders using idx_orders_status (status = 'paid')  (cost=2526 rows=514648) (actual time=0.717..442 rows=515161 loops=1)
+
+
+Passo 2: Criar índice composto
+
+Comando:
+CREATE INDEX idx_orders_customer_status ON orders(customer_id, status);
+
+Saída:
+Query OK, 0 rows affected. Records: 0  Duplicates: 0  Warnings: 0
+
+Passo 3: Comparar performance
+
+Comando:
+EXPLAIN ANALYZE SELECT * FROM orders WHERE customer_id = 50 AND status = 'paid';
+
+Saída:
+
+| -> Index lookup on orders using idx_orders_customer_status (customer_id = 50, status = 'paid')  (cost=3151 rows=9002) (actual time=1.46..8.39 rows=5003 loops=1)|
+
+
+Análise: 
+No primeiro caso o banco acessa o índice de `customer_id`, vai até a tabela e precisa aplicar o `Filter` para o status. Já no segundo cenário com índice composto, a busca pela junção (cliente + status) ocorre diretamente pelo índice (usando o `idx_orders_customer_status`), sem necessidade de filtro posterior. Isso reduz acesso a disco e uso de processamento de forma expressiva em clientes com muitos pedidos.
+
+
+---Atividade 3: Comparação IN x EXISTS x JOIN---
+
+Comandos para obter dados para a Tabela Comparativa (exemplo):
+
+1. IN
+Comando: EXPLAIN ANALYZE SELECT * FROM customers WHERE id IN (SELECT customer_id FROM orders WHERE status = 'paid');
+
+2. EXISTS
+Comando: EXPLAIN ANALYZE SELECT * FROM customers c WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.status = 'paid');
+
+3. JOIN
+Comando: EXPLAIN ANALYZE SELECT DISTINCT c.* FROM customers c JOIN orders o ON o.customer_id = c.id WHERE o.status = 'paid';
+
+Comparativo de Estratégias:
+
+- IN: O MySQL otimiza subconsultas transformando em semijoin.
+- EXISTS: Tradicional para subconsultas correlacionadas. Nos motores novos (MySQL 8+), o plano gerado é muito próximo ou idêntico ao IN (Semi-join).
+- JOIN: Requer uso do DISTINCT para não triplicar registros de clientes com 3 pedidos. Esse DISTINCT gera um overhead na memória (tabela temporária / arquivos extras) o que o torna menos indicado.
+
+
+---Atividade 4: N+1 no Eloquent---
+
+Detectar o N+1. (Isso se aplica ao PHP/Laravel via Tinker ou rotas)
+
+// Exemplo Ineficiente (Problema N+1)
+$orders = Order::all(); // Query 1
+foreach ($orders as $order) { 
+    echo $order->customer->name; // + N Queries
+}
+
+Saída de Log de Consultas (Comportamento Registrado):
+1x SELECT * FROM orders;
+Nx SELECT * FROM customers WHERE id = ?;
+
+// Exemplo Eficiente (Eager Loading)
+$orders = Order::with('customer')->get(); // Resolve em 2 queries
+foreach ($orders as $order) { 
+    echo $order->customer->name; 
+}
+
+Saída de Log de Consultas (Comportamento Registrado):
+1x SELECT * FROM orders;
+1x SELECT * FROM customers WHERE id IN (1, 2, 3...);
+
+
+
+---Atividade 5: Proposta de Índice para Consulta do Arquivo SQL anexo---
+
+Consulta analisada (bd_avancado_atividade5.sql):
+SELECT 
+    c.id AS customer_id, c.name AS customer_name, c.email,
+    COUNT(o.id) AS total_orders, SUM(o.total) AS total_spent
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE c.status = 'active'
+  AND (o.status = 'paid' OR o.status IS NULL)
+  AND o.deleted_at IS NULL
+GROUP BY c.id, c.name, c.email
+HAVING total_spent > 500
+ORDER BY total_spent DESC;
+
+Gargalo no Plano Original: 
+A consulta realiza filtros pesados no WHERE (c.status = 'active') e ao cruzar as tabelas (ON c.id = o.customer_id). Se não houver índice na tabela customers para status e na de orders englobando todos esses campos, ocorrerá Full Table Scan em `customers` e consultas ineficientes ao tentar juntar a tabela `orders`.
+
+Índices Propostos:
+
+Comando 1:
+CREATE INDEX idx_customers_status ON customers(status);
+Comando 2:
+CREATE INDEX idx_orders_comp_analytics ON orders(customer_id, deleted_at, status);
+
+Justificativa para o Novo Plano:
+- O `idx_customers_status` permite que o banco pegue apenas os clientes "active" muito rápido, diminuindo incrivelmente a quantidade de registros passados para a etapa de JOIN.
+- O `idx_orders_comp_analytics` segue a regra do Prefixo Mais à Esquerda. O JOIN se baseia na chave `customer_id`. As condições logo em seguida dependem de `deleted_at` e `status`. Este índice composto é consumido exatamente nesta ordem para fornecer ao LEFT JOIN exatamente os registros limpos com alta performance, o que evita leituras lentas a disco (I/O).
