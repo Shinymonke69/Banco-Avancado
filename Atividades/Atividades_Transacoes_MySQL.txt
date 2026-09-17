@@ -1,0 +1,249 @@
+Atividades - Transações no MySQL
+Nome do aluno: [Preencha o nome do aluno aqui]
+
+
+Atividade 1 — ROLLBACK
+Objetivo: comprovar o funcionamento do ROLLBACK.
+
+-- Selecione um produto e anote o estoque:
+SELECT id, name, stock FROM products WHERE id = 1;
+
+-- Inicie uma transação:
+START TRANSACTION;
+
+-- Reduza o estoque em 3 unidades:
+UPDATE products SET stock = stock - 3 WHERE id = 1;
+
+-- Consulte o estoque:
+SELECT id, name, stock FROM products WHERE id = 1;
+
+-- Execute ROLLBACK:
+ROLLBACK;
+
+-- Consulte novamente:
+SELECT id, name, stock FROM products WHERE id = 1;
+
+
+Atividade 2 — COMMIT
+Objetivo: compreender a confirmação definitiva da transação.
+
+-- Escolha um produto:
+SELECT id, name, price FROM products WHERE id = 2;
+
+-- Inicie uma transação:
+START TRANSACTION;
+
+-- Altere o preço:
+UPDATE products SET price = 150.00 WHERE id = 2;
+
+-- Consulte o novo valor:
+SELECT id, name, price FROM products WHERE id = 2;
+
+-- Execute COMMIT:
+COMMIT;
+
+-- Tente executar ROLLBACK e consulte novamente:
+ROLLBACK;
+SELECT id, name, price FROM products WHERE id = 2;
+-- O valor permanecerá 150.00, pois o COMMIT tornou a alteração permanente.
+
+
+Atividade 3 — SAVEPOINT
+
+START TRANSACTION;
+
+-- Faça três alterações em products:
+-- 1ª alteração
+UPDATE products SET price = 100.00 WHERE id = 1;
+
+-- 2ª alteração
+UPDATE products SET price = 200.00 WHERE id = 2;
+
+-- Crie um SAVEPOINT depois da segunda alteração:
+SAVEPOINT apos_segunda_alteracao;
+
+-- Faça uma terceira alteração:
+UPDATE products SET price = 300.00 WHERE id = 3;
+
+-- Execute ROLLBACK TO SAVEPOINT:
+ROLLBACK TO SAVEPOINT apos_segunda_alteracao;
+
+-- Verifique quais alterações permaneceram:
+SELECT id, price FROM products WHERE id IN (1, 2, 3);
+-- Permaneceram as alterações dos produtos 1 e 2. A alteração do produto 3 foi desfeita.
+
+-- Finalize com COMMIT:
+COMMIT;
+
+
+Atividade 4 — Processamento de pedido
+Desafio: não permita estoque negativo.
+
+START TRANSACTION;
+
+-- Crie um pedido:
+INSERT INTO orders (customer_id, total, status, created_at)
+VALUES (1, 0, 'open', NOW());
+SET @order_id = LAST_INSERT_ID();
+
+-- Insira pelo menos dois itens (verifique e atualize o estoque sem permitir negativo):
+-- Produto 1:
+UPDATE products SET stock = stock - 2 WHERE id = 1 AND stock >= 2;
+-- (Em um backend, verificamos se a atualização ocorreu com ROW_COUNT(). Se > 0, insere o item)
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, created_at)
+SELECT @order_id, id, name, price, 2, NOW() FROM products WHERE id = 1;
+
+-- Produto 2:
+UPDATE products SET stock = stock - 1 WHERE id = 2 AND stock >= 1;
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, created_at)
+SELECT @order_id, id, name, price, 1, NOW() FROM products WHERE id = 2;
+
+-- Calcule o total:
+UPDATE orders 
+SET total = (
+    SELECT COALESCE(SUM(product_price * quantity), 0) 
+    FROM order_items 
+    WHERE order_id = @order_id
+)
+WHERE id = @order_id;
+
+-- Valide os dados e Finalize:
+COMMIT;
+
+
+Atividade 5 — Pedido com falha
+Objetivo: demonstrar por que operações críticas devem ser tratadas como uma unidade.
+
+START TRANSACTION;
+
+-- Inserindo um pedido...
+INSERT INTO orders (customer_id, total, status, created_at)
+VALUES (2, 0, 'open', NOW());
+SET @order_id = LAST_INSERT_ID();
+
+-- Inserindo item e atualizando estoque...
+UPDATE products SET stock = stock - 1 WHERE id = 1;
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, created_at)
+SELECT @order_id, id, name, price, 1, NOW() FROM products WHERE id = 1;
+
+-- Provocando um erro proposital em uma etapa posterior
+INSERT INTO tabela_inexistente VALUES (1);
+
+-- Como ocorreu um erro e as etapas não puderam ser concluídas:
+ROLLBACK;
+-- Assim o pedido não é criado parcialmente e o estoque é revertido.
+
+Atividade 6 — Sistema bancário
+
+-- Crie accounts com id, holder_name e balance.
+CREATE TABLE IF NOT EXISTS accounts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    holder_name VARCHAR(255) NOT NULL,
+    balance DECIMAL(10,2) NOT NULL DEFAULT 0.00
+) ENGINE=InnoDB;
+
+-- Insira pelo menos três contas:
+INSERT INTO accounts (holder_name, balance) VALUES 
+('João', 1000.00),
+('Maria', 500.00),
+('Pedro', 200.00);
+
+-- Implemente uma transferência (João transfere 300 para Maria):
+START TRANSACTION;
+
+-- Valide o saldo da origem e não permita saldo negativo:
+UPDATE accounts SET balance = balance - 300.00 WHERE id = 1 AND balance >= 300.00;
+
+-- Apenas adicione na conta destino se a operação anterior deu certo:
+UPDATE accounts SET balance = balance + 300.00 WHERE id = 2;
+
+-- Conclua a transação:
+COMMIT;
+
+
+Atividade 7 — Transferência com SAVEPOINT
+
+START TRANSACTION;
+
+-- Débito
+UPDATE accounts SET balance = balance - 100.00 WHERE id = 2 AND balance >= 100.00;
+
+-- SAVEPOINT
+SAVEPOINT apos_debito;
+
+-- Crédito
+UPDATE accounts SET balance = balance + 100.00 WHERE id = 3;
+
+-- Outra operação
+UPDATE accounts SET balance = balance - 50.00 WHERE id = 3 AND balance >= 50.00;
+
+-- Provoque um erro depois do SAVEPOINT (aqui simulamos a necessidade de reverter uma etapa)
+-- ...
+
+-- Use ROLLBACK TO SAVEPOINT:
+ROLLBACK TO SAVEPOINT apos_debito;
+
+-- A transação pode continuar com outras lógicas ou finalizada com ROLLBACK total em caso crítico.
+COMMIT;
+
+
+Atividade 8 — Análise de atomicidade
+
+- Quais operações devem fazer parte da mesma transação?
+R: As operações 1 (Criar pedido), 2 (Inserir item), 3 (Reduzir estoque), 4 (Registrar pagamento) e 5 (Atualizar status) devem estar na mesma transação.
+
+- O que acontece se o banco falhar entre as etapas 2 e 3?
+R: Se a transação não for concluída, ela sofrerá ROLLBACK e não haverá registros parciais (o pedido inserido será desfeito). Sem transações, ficaríamos com um pedido criado e itens registrados, mas sem dar baixa no estoque.
+
+- O que aconteceria se houvesse COMMIT após a etapa 3?
+R: A inserção do pedido e a baixa do estoque seriam definitivas. Caso o pagamento falhasse na etapa 4, o banco ficaria inconsistente (teria um pedido criado e estoque reduzido, mas sem pagamento efetivado).
+
+- Em que situação usar ROLLBACK?
+R: Quando qualquer etapa dependente falhar (como falta de estoque ou falha no pagamento) para reverter tudo que já tinha sido feito até então.
+
+- Em que situação um SAVEPOINT poderia ser útil?
+R: Se a etapa de Pagamento falhasse com um cartão de crédito, poderíamos dar um ROLLBACK TO SAVEPOINT até antes dessa tentativa, permitindo ao usuário tentar um novo cartão, sem perder os itens e o pedido já registrados na transação.
+
+
+Desafio Final — Entrega do Desafio
+
+-- Explicação da solução e uso do SAVEPOINT:
+-- O fluxo foi colocado inteiramente dentro de uma transação. Um SAVEPOINT foi definido antes da etapa final (atualização de status/pagamento). Se algo der errado nessa última validação, o ROLLBACK TO SAVEPOINT pode ser usado, mas se o problema for grave, o ROLLBACK desfaz toda a compra, impedindo itens registrados sem pedido fechado ou estoque reduzido sem venda. O COMMIT só ocorre se todas as condições forem válidas.
+
+START TRANSACTION;
+
+-- 1. Criar pedido
+INSERT INTO orders (customer_id, total, status, created_at) VALUES (1, 0, 'open', NOW());
+SET @new_order_id = LAST_INSERT_ID();
+
+-- 2. Atualizar estoque garantindo atomicidade
+UPDATE products SET stock = stock - 1 WHERE id = 1 AND stock >= 1;
+
+-- 3. Inserir itens do pedido
+INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, created_at)
+SELECT @new_order_id, id, name, price, 1, NOW() FROM products WHERE id = 1;
+
+-- 4. SAVEPOINT antes do pagamento
+SAVEPOINT antes_do_pagamento;
+
+-- 5. Atualizar total e alterar status para concluído
+UPDATE orders 
+SET total = (SELECT SUM(product_price * quantity) FROM order_items WHERE order_id = @new_order_id),
+    status = 'paid',
+    paid_at = NOW()
+WHERE id = @new_order_id;
+
+-- Evidências de funcionamento:
+-- Em caso de sucesso de todas as regras:
+COMMIT;
+
+-- Em caso de falha no pagamento:
+-- ROLLBACK TO SAVEPOINT antes_do_pagamento;
+
+-- Em caso de erro crítico no fluxo:
+-- ROLLBACK;
+
+-- Consultas utilizadas para validação:
+SELECT * FROM orders WHERE id = @new_order_id;
+SELECT * FROM order_items WHERE order_id = @new_order_id;
+SELECT id, name, stock FROM products WHERE id = 1;
