@@ -60,8 +60,42 @@ services:
     networks:
       - advanced_bd
 
+  mongodb:
+    image: mongodb/mongodb-community-server:latest
+    container_name: advanced_bd_mongodb
+    restart: unless-stopped
+    ports:
+      - "27917:27017"
+    volumes:
+      - advanced_mongodb_data:/data/db
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: advbd
+      MONGODB_INITDB_ROOT_PASSWORD: advbd1234
+    networks:
+      - advanced_bd
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: advanced_bd_mongo_express
+    restart: unless-stopped
+    ports:
+      - "8281:8081"
+    environment:
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH_ENABLED: "false"
+      ME_CONFIG_MONGODB_AUTH_USERNAME: advbd
+      ME_CONFIG_MONGODB_AUTH_PASSWORD: advbd1234
+    depends_on:
+      - mongodb
+    networks:
+      - advanced_bd
+
 volumes:
   advanced_bd_data:
+  advanced_mongodb_data:
 
 networks:
   advanced_bd:

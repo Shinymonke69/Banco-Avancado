@@ -18,11 +18,21 @@ class ProductFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->sentence(),
+            'name'        => fake()->sentence(),
             'description' => fake()->sentences(asText: true),
-            'image' => fake()->imageUrl(),
-            'stock' => fake()->randomNumber(2),
-            'price' => fake()->randomDigitNotZero() * fake()->randomNumber(2),
+            'image'       => fake()->imageUrl(),
+            'stock'       => fake()->randomNumber(2),
+            'price'       => fake()->randomDigitNotZero() * fake()->randomNumber(2),
+            'attributes'  => [
+                'colors' => [
+                    fake()->colorName(),
+                    fake()->colorName(),
+                    fake()->colorName(),
+                    fake()->colorName(),
+                    fake()->colorName(),
+                ],
+                'sizes'  => ['P', 'M', 'G'],
+            ],
         ];
     }
 }

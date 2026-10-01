@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     libpq-dev \
+    libssl-dev \
     libsqlite3-dev \
     libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
@@ -62,6 +63,13 @@ RUN docker-php-ext-install -j$(nproc) \
 
 RUN pecl install redis \
     && docker-php-ext-enable redis
+
+###############################################################################
+# MongoDB
+###############################################################################
+
+RUN pecl install mongodb \
+    && docker-php-ext-enable mongodb
 
 ###############################################################################
 # Composer

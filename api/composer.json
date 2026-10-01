@@ -12,7 +12,8 @@
         "php": "^8.3",
         "laravel/framework": "^13.8",
         "laravel/telescope": "^5.23",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "mongodb/laravel-mongodb": "^5.11"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
