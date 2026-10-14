@@ -25,12 +25,22 @@ class OrderSeeder extends Seeder
         $fakeData = fn() => ([
             'customer_id' => fake()->randomElement($customers),
             'status' => fake()->randomElement(['pending', 'paid']),
-            'paid_at' => $paidAt, // ? $paidAt->toISOString() : null,
-            'total' => fake()->randomFloat(
-                nbMaxDecimals: 2,
-                min: 10,
-                max: 500,
-            ),
+            'paid_at' => $paidAt,
+            'total' => fake()->randomFloat(2, 10, 500),
+            'items' => [
+                [
+                    'product_id' => (string) new \MongoDB\BSON\ObjectId(),
+                    'product_name' => fake()->word(),
+                    'product_price' => fake()->randomFloat(2, 10, 100),
+                    'quantity' => fake()->numberBetween(1, 5),
+                ],
+                [
+                    'product_id' => (string) new \MongoDB\BSON\ObjectId(),
+                    'product_name' => fake()->word(),
+                    'product_price' => fake()->randomFloat(2, 10, 100),
+                    'quantity' => fake()->numberBetween(1, 5),
+                ]
+            ]
         ]);
 
         $inserted = 0;
@@ -40,9 +50,8 @@ class OrderSeeder extends Seeder
                 $orders[] = $fakeData();
             }
 
-            DB::transaction(function() use($orders) {
-                DB::table('orders')->insert($orders);
-            });
+            // Forçando o uso da connection do MongoDB pelo facade DB
+            DB::connection('mongodb')->table('orders')->insert($orders);
 
             $inserted += count($orders);
         }

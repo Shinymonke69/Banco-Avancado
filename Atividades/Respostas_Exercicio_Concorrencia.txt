@@ -1,0 +1,32 @@
+Respostas - Concorrência no MySQL
+
+1. Análise Teórica de Anomalias de Concorrência
+
+Questão A:
+As anomalias que ocorrem ou poderiam ocorrer no cenário são Non-Repeatable Read (Leitura não repetível) e Phantom Read (Leitura Fantasma).
+
+- Dirty Read (Leitura Suja): Ocorre quando uma transação lê dados de outra transação que ainda não efetuou o commit. Ou seja, lê alterações que podem ser revertidas.
+- Non-Repeatable Read (Leitura não repetível): Ocorre quando, dentro de uma mesma transação, uma linha é lida duas vezes e retorna valores diferentes. Isso acontece porque, entre as duas leituras, uma outra transação atualizou (update) ou deletou (delete) aquela linha específica e realizou o commit (ex: os 2 pedidos que tiveram o pagamento confirmado alteraram seus status/dados lidos inicialmente).
+- Phantom Read (Leitura Fantasma): Ocorre quando uma mesma consulta, baseada em um conjunto de critérios (ex: status = 'open'), retorna um número diferente de linhas ao ser executada novamente na mesma transação. Isso acontece porque outra transação inseriu (insert) ou removeu registros que satisfazem a condição de busca e fez o commit (ex: os 3 novos pedidos recém inseridos).
+
+Questão B:
+O nível de isolamento padrão do engine InnoDB no MySQL 9 é o REPEATABLE READ.
+O MVCC (Multi-Version Concurrency Control) evita que a consulta seja afetada por escritas simultâneas de outros usuários ao fornecer um "snapshot" (um retrato estático) dos dados no exato instante em que a transação começou. Toda leitura subsequente feita durante essa transação consultará os dados a partir dessa versão histórica, ignorando quaisquer modificações (updates, deletes ou inserts) que outras transações tenham feito e commitado após o início do snapshot. Sendo assim, sob o nível REPEATABLE READ padrão, o operador não veria as alterações recentes e obteria sempre o mesmo resultado para a mesma consulta.
+
+--------------------------------------------------
+
+2. Simulação Prática de Trava de Linha (Row Lock Wait) no MySQL
+
+3. Responda:
+a. A consulta da Sessão B não finaliza imediatamente. Ela ficou congelada em estado de espera (lock wait). Isso ocorre pois a Sessão A aplicou um bloqueio exclusivo (FOR UPDATE) na linha de id = 1, forçando a Sessão B a esperar até que o bloqueio seja liberado para poder alterar o registro.
+b. Ao executar o comando COMMIT na Sessão A, sua transação é finalizada e o bloqueio sobre a linha é liberado. Imediatamente após isso, a Sessão B que estava aguardando é desbloqueada, executa o seu comando UPDATE e finaliza com sucesso.
+
+--------------------------------------------------
+
+3. Testando Diferenças entre READ COMMITTED e REPEATABLE READ
+
+4. Questão:
+Sim, o valor do estoque retornado na Sessão A mudou. No nível de isolamento READ COMMITTED, o SGBD garante que você não fará leituras sujas, mas cada consulta SELECT dentro da mesma transação fará a leitura do estado mais atualizado dos dados comitados naquele momento. Portanto, a Sessão A consegue ver as alterações efetuadas e confirmadas (commit) pela Sessão B.
+
+O que aconteceria se a Sessão A estivesse utilizando o nível padrão REPEATABLE READ?
+Se estivesse utilizando o nível padrão REPEATABLE READ, o valor retornado na segunda consulta não mudaria. A segunda consulta na Sessão A continuaria vendo o mesmo valor de estoque da primeira, pois este nível de isolamento utiliza o snapshot constante criado no início da transação, ocultando qualquer modificação feita e confirmada pela Sessão B após a transação A ter se iniciado.
