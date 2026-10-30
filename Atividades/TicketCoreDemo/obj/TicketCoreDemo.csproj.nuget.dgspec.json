@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj": {}
+    "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj": {}
   },
   "projects": {
-    "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj": {
+    "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
+        "projectUniqueName": "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
         "projectName": "TicketCoreDemo",
-        "projectPath": "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
+        "projectPath": "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
         "packagesPath": "C:\\Users\\gabri\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\obj\\",
+        "outputPath": "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\gabri\\AppData\\Roaming\\NuGet\\NuGet.Config"

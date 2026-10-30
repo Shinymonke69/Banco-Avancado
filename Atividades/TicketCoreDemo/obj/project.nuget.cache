@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "B7sNb8w2Yrk=",
+  "dgSpecHash": "58lkujApt10=",
   "success": true,
-  "projectFilePath": "C:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
+  "projectFilePath": "c:\\Users\\gabri\\Documents\\Banco Avancado\\bd-avancado\\Atividades\\TicketCoreDemo\\TicketCoreDemo.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\gabri\\.nuget\\packages\\dnsclient\\1.6.1\\dnsclient.1.6.1.nupkg.sha512",
     "C:\\Users\\gabri\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.2\\microsoft.extensions.dependencyinjection.abstractions.8.0.2.nupkg.sha512",
